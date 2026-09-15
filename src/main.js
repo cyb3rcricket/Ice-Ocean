@@ -20,6 +20,10 @@ const CHUNK_SIZE = 34;
 const STREAM_RADIUS = 2;
 const SEA_LEVEL = 0;
 const EYE_HEIGHT = 2.75;
+const MAX_ALTITUDE = 150;
+const PLAYER_RADIUS = 1.15;
+const DRIFT_SPEED = 18.6;
+const BOOST_SPEED = 39;
 
 const state = {
   position: new THREE.Vector3(0, EYE_HEIGHT, 8),
@@ -66,6 +70,8 @@ function init() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.16;
+  renderer.domElement.tabIndex = 0;
+  renderer.domElement.setAttribute('aria-label', 'Ice Ocean scene. Click and drag to look around.');
   sceneMount.appendChild(renderer.domElement);
 
   world.fog = new THREE.FogExp2(0x081738, 0.0046);
@@ -546,6 +552,7 @@ function bindControls() {
   window.addEventListener('keyup', (event) => keys.delete(event.code));
   renderer.domElement.addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    renderer.domElement.focus({ preventScroll: true });
     lookPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
     renderer.domElement.setPointerCapture(event.pointerId);
   });
@@ -562,7 +569,10 @@ function bindControls() {
   renderer.domElement.addEventListener('pointercancel', endLook);
 
   document.querySelectorAll('[data-move]').forEach((button) => {
-    const codeByMove = { forward: 'ArrowUp', left: 'ArrowLeft', back: 'ArrowDown', right: 'ArrowRight' };
+    const codeByMove = {
+      forward: 'ArrowUp', left: 'ArrowLeft', back: 'ArrowDown', right: 'ArrowRight',
+      ascend: 'KeyE', descend: 'KeyQ',
+    };
     const code = codeByMove[button.dataset.move];
     button.addEventListener('pointerdown', (event) => { event.preventDefault(); keys.add(code); button.setPointerCapture(event.pointerId); });
     const clear = (event) => { event.preventDefault(); keys.delete(code); };
@@ -616,19 +626,23 @@ function disposeObject(object) {
 
 function movePlayer(delta) {
   if (state.paused) return;
-  const input = new THREE.Vector2();
-  if (keys.has('KeyA')) input.x += 1;
-  if (keys.has('ArrowLeft')) input.x -= 1;
-  if (keys.has('KeyD')) input.x -= 1;
-  if (keys.has('ArrowRight')) input.x += 1;
-  if (keys.has('KeyW')) input.y -= 1;
-  if (keys.has('ArrowUp')) input.y += 1;
-  if (keys.has('KeyS')) input.y += 1;
-  if (keys.has('ArrowDown')) input.y -= 1;
-  if (state.autoCruise) input.y = Math.max(input.y, 0.7);
-  if (input.lengthSq() === 0) return;
-  input.normalize();
-  const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 13 : 6.2) * delta * (state.autoCruise && input.y > 0.7 ? 0.78 : 1);
+  const horizontal = new THREE.Vector2();
+  if (keys.has('KeyA')) horizontal.x += 1;
+  if (keys.has('ArrowLeft')) horizontal.x -= 1;
+  if (keys.has('KeyD')) horizontal.x -= 1;
+  if (keys.has('ArrowRight')) horizontal.x += 1;
+  if (keys.has('KeyW')) horizontal.y -= 1;
+  if (keys.has('ArrowUp')) horizontal.y += 1;
+  if (keys.has('KeyS')) horizontal.y += 1;
+  if (keys.has('ArrowDown')) horizontal.y -= 1;
+  if (state.autoCruise) horizontal.y = Math.max(horizontal.y, 0.7);
+  let vertical = 0;
+  if (keys.has('KeyE')) vertical += 1;
+  if (keys.has('KeyQ')) vertical -= 1;
+  const moveIntent = new THREE.Vector3(horizontal.x, vertical, horizontal.y);
+  if (moveIntent.lengthSq() === 0) return;
+  moveIntent.normalize();
+  const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? BOOST_SPEED : DRIFT_SPEED) * delta * (state.autoCruise ? 0.78 : 1);
   let forward = new THREE.Vector3(Math.sin(state.yaw), 0, -Math.cos(state.yaw));
   if (state.autoCruise && !lookPointer && isBlocked(state.position.x + forward.x * 5.5, state.position.z + forward.z * 5.5)) {
     let nearest = null;
@@ -641,21 +655,26 @@ function movePlayer(delta) {
     forward = new THREE.Vector3(Math.sin(state.yaw), 0, -Math.cos(state.yaw));
   }
   const right = new THREE.Vector3(Math.cos(state.yaw), 0, Math.sin(state.yaw));
-  const velocity = forward.multiplyScalar(input.y * speed).add(right.multiplyScalar(input.x * speed));
+  const altitudeCandidate = THREE.MathUtils.clamp(state.position.y + moveIntent.y * speed, EYE_HEIGHT, MAX_ALTITUDE);
+  if (!isBlocked(state.position.x, state.position.z, altitudeCandidate)) state.position.y = altitudeCandidate;
+  const velocity = forward.multiplyScalar(moveIntent.z * speed).add(right.multiplyScalar(moveIntent.x * speed));
   const before = state.position.clone();
   const tryX = state.position.x + velocity.x;
   const tryZ = state.position.z + velocity.z;
-  if (!isBlocked(tryX, state.position.z)) state.position.x = tryX;
-  if (!isBlocked(state.position.x, tryZ)) state.position.z = tryZ;
-  state.position.y = EYE_HEIGHT;
+  if (!isBlocked(tryX, state.position.z, state.position.y)) state.position.x = tryX;
+  if (!isBlocked(state.position.x, tryZ, state.position.y)) state.position.z = tryZ;
   state.distance += Math.hypot(state.position.x - before.x, state.position.z - before.z) * 0.018;
 }
 
-function isBlocked(x, z) {
+function isBlocked(x, z, altitude = state.position.y) {
+  const playerBottom = altitude - PLAYER_RADIUS;
+  const playerTop = altitude + PLAYER_RADIUS;
   for (const collider of colliders) {
     const dx = x - collider.x;
     const dz = z - collider.z;
-    if (dx * dx + dz * dz < (collider.r + 1.45) ** 2 && collider.h > 1.6) return true;
+    const horizontalHit = dx * dx + dz * dz < (collider.r + PLAYER_RADIUS) ** 2;
+    const verticalHit = playerBottom < collider.h && playerTop > SEA_LEVEL + 0.15;
+    if (horizontalHit && verticalHit) return true;
   }
   return false;
 }
@@ -665,8 +684,9 @@ function checkDiscoveries() {
     const artifact = chunk.userData.artifact;
     if (!artifact || artifact.userData.discovered) continue;
     const dx = state.position.x - artifact.position.x;
+    const dy = state.position.y - artifact.position.y;
     const dz = state.position.z - artifact.position.z;
-    if (Math.hypot(dx, dz) < 5.2) {
+    if (Math.hypot(dx, dy, dz) < 5.2) {
       const id = artifact.userData.artifactId;
       state.discoveredIds.add(id); state.discoveries += 1;
       markArtifactDiscovered(artifact);
@@ -684,6 +704,7 @@ function updateHud() {
   app.dataset.chunks = String(chunks.size);
   app.dataset.discoveries = String(state.discoveries);
   app.dataset.position = `${state.position.x.toFixed(2)},${state.position.y.toFixed(2)},${state.position.z.toFixed(2)}`;
+  app.dataset.altitude = state.position.y.toFixed(2);
 }
 
 function showMessage(text) {

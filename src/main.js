@@ -562,7 +562,7 @@ function bindControls() {
   renderer.domElement.addEventListener('pointercancel', endLook);
 
   document.querySelectorAll('[data-move]').forEach((button) => {
-    const codeByMove = { forward: 'KeyW', left: 'KeyA', back: 'KeyS', right: 'KeyD' };
+    const codeByMove = { forward: 'ArrowUp', left: 'ArrowLeft', back: 'ArrowDown', right: 'ArrowRight' };
     const code = codeByMove[button.dataset.move];
     button.addEventListener('pointerdown', (event) => { event.preventDefault(); keys.add(code); button.setPointerCapture(event.pointerId); });
     const clear = (event) => { event.preventDefault(); keys.delete(code); };
@@ -617,10 +617,14 @@ function disposeObject(object) {
 function movePlayer(delta) {
   if (state.paused) return;
   const input = new THREE.Vector2();
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) input.x -= 1;
-  if (keys.has('KeyD') || keys.has('ArrowRight')) input.x += 1;
-  if (keys.has('KeyW') || keys.has('ArrowUp')) input.y += 1;
-  if (keys.has('KeyS') || keys.has('ArrowDown')) input.y -= 1;
+  if (keys.has('KeyA')) input.x += 1;
+  if (keys.has('ArrowLeft')) input.x -= 1;
+  if (keys.has('KeyD')) input.x -= 1;
+  if (keys.has('ArrowRight')) input.x += 1;
+  if (keys.has('KeyW')) input.y -= 1;
+  if (keys.has('ArrowUp')) input.y += 1;
+  if (keys.has('KeyS')) input.y += 1;
+  if (keys.has('ArrowDown')) input.y -= 1;
   if (state.autoCruise) input.y = Math.max(input.y, 0.7);
   if (input.lengthSq() === 0) return;
   input.normalize();

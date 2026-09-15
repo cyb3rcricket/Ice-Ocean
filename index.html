@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#050d24" />
+    <title>ICE OCEAN — The Blue Silence</title>
+  </head>
+  <body>
+    <main id="app" aria-label="Ice Ocean exploration game">
+      <div id="scene" aria-hidden="true"></div>
+
+      <header class="hud hud-top">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <p class="eyebrow">EXPLORATION LOG 01</p>
+            <h1>ICE OCEAN</h1>
+          </div>
+        </div>
+        <div class="voyage-state" aria-live="polite">
+          <span class="state-dot"></span>
+          <span id="state-label">VOYAGE ACTIVE</span>
+        </div>
+      </header>
+
+      <section class="hud hud-bottom" aria-label="Voyage status">
+        <div class="readout">
+          <span class="readout-label">DISTANCE</span>
+          <strong id="distance">0.0 <small>NM</small></strong>
+        </div>
+        <div class="readout">
+          <span class="readout-label">ICE FIELDS</span>
+          <strong id="chunks">0 <small>ACTIVE</small></strong>
+        </div>
+        <div class="readout">
+          <span class="readout-label">DISCOVERIES</span>
+          <strong id="discoveries">0 <small>FOUND</small></strong>
+        </div>
+        <p class="hint"><span class="key">WASD</span> move <span class="key">DRAG</span> look <span class="key">SHIFT</span> drift faster</p>
+      </section>
+
+      <div class="controls" aria-label="Game controls">
+        <button id="cruise-button" class="control-button primary" type="button">AUTO CRUISE</button>
+        <button id="pause-button" class="control-button" type="button">PAUSE</button>
+        <button id="restart-button" class="control-button" type="button" aria-label="Restart voyage">RESTART VOYAGE</button>
+        <button id="fullscreen-button" class="control-button icon-button" type="button" aria-label="Toggle fullscreen">⛶</button>
+      </div>
+
+      <div id="message" class="message" role="status" aria-live="polite"></div>
+
+      <div id="pause-card" class="pause-card" hidden>
+        <p class="eyebrow">VOYAGE PAUSED</p>
+        <h2>The tide is holding.</h2>
+        <p>Resume when you are ready to cross the next field.</p>
+        <button id="resume-button" class="control-button primary" type="button">RESUME</button>
+      </div>
+
+      <div id="touch-controls" aria-label="Touch movement controls">
+        <div class="touch-pad">
+          <button type="button" data-move="forward" aria-label="Move forward">↑</button>
+          <div>
+            <button type="button" data-move="left" aria-label="Move left">←</button>
+            <button type="button" data-move="back" aria-label="Move backward">↓</button>
+            <button type="button" data-move="right" aria-label="Move right">→</button>
+          </div>
+        </div>
+        <span class="touch-label">DRAG THE SKY TO LOOK</span>
+      </div>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

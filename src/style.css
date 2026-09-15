@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap');
+
+:root {
+  color-scheme: dark;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  background: #030818;
+  color: #e9fbff;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #030818; }
+
+body { overscroll-behavior: none; }
+
+button { font: inherit; color: inherit; }
+
+#app, #scene { position: fixed; inset: 0; width: 100%; height: 100%; }
+
+#scene { z-index: 0; cursor: grab; touch-action: none; }
+#scene:active { cursor: grabbing; }
+#scene canvas { display: block; width: 100%; height: 100%; }
+
+.hud { position: fixed; z-index: 2; pointer-events: none; }
+.hud-top { top: clamp(20px, 4vw, 46px); left: clamp(22px, 5vw, 72px); right: clamp(22px, 5vw, 72px); display: flex; justify-content: space-between; align-items: flex-start; }
+.brand { display: flex; gap: 14px; align-items: center; text-shadow: 0 2px 18px rgba(0, 0, 0, .4); }
+.brand-mark { display: block; width: 25px; height: 25px; border: 1px solid rgba(163,244,255,.72); transform: rotate(45deg); box-shadow: inset 0 0 12px rgba(84,231,255,.55), 0 0 15px rgba(84,231,255,.35); }
+.eyebrow { margin: 0 0 5px; font: 500 10px/1.2 'DM Mono', monospace; letter-spacing: .2em; color: #8edce9; }
+h1 { margin: 0; font-size: clamp(20px, 3vw, 34px); line-height: .9; font-weight: 500; letter-spacing: .18em; }
+.voyage-state { display: flex; align-items: center; gap: 8px; margin-top: 4px; font: 500 10px 'DM Mono', monospace; letter-spacing: .14em; color: rgba(222,250,255,.8); }
+.state-dot { width: 6px; height: 6px; border-radius: 50%; background: #d4fbff; box-shadow: 0 0 12px #86f6ff; }
+.paused .state-dot { background: #ffacd9; box-shadow: 0 0 12px #f65eb4; }
+
+.hud-bottom { left: clamp(22px, 5vw, 72px); bottom: clamp(22px, 5vw, 62px); display: flex; gap: clamp(17px, 3vw, 40px); align-items: flex-end; }
+.readout { min-width: 72px; }
+.readout-label { display: block; margin-bottom: 4px; color: rgba(157,222,236,.7); font: 400 9px 'DM Mono', monospace; letter-spacing: .13em; }
+.readout strong { display: block; font: 400 clamp(19px, 2.2vw, 27px) 'DM Mono', monospace; letter-spacing: -.04em; text-shadow: 0 0 18px rgba(108,231,255,.25); }
+.readout small { font-size: 9px; letter-spacing: .08em; color: rgba(192,244,250,.56); }
+.hint { margin: 0 0 3px clamp(8px, 2vw, 24px); color: rgba(208,245,249,.66); font: 400 10px 'DM Mono', monospace; letter-spacing: .06em; white-space: nowrap; }
+.key { color: #effeff; border-bottom: 1px solid rgba(158,235,244,.45); padding-bottom: 2px; margin: 0 2px; }
+
+.controls { position: fixed; z-index: 3; right: clamp(22px, 5vw, 72px); bottom: clamp(22px, 5vw, 62px); display: flex; gap: 8px; align-items: center; }
+.control-button { border: 1px solid rgba(169,235,246,.28); border-radius: 2px; padding: 10px 12px; background: rgba(4,19,42,.42); backdrop-filter: blur(14px); color: rgba(223,249,253,.86); font: 500 9px 'DM Mono', monospace; letter-spacing: .1em; cursor: pointer; transition: background .2s ease, border-color .2s ease, transform .2s ease; }
+.control-button:hover, .control-button:focus-visible { border-color: rgba(181,249,255,.82); background: rgba(17,77,99,.54); outline: none; }
+.control-button:active { transform: translateY(1px); }
+.control-button.primary { border-color: rgba(141,243,250,.7); color: #eaffff; background: rgba(24,108,129,.42); }
+.icon-button { min-width: 34px; padding: 9px; font-size: 17px; line-height: 1; }
+
+.message { position: fixed; z-index: 4; left: 50%; bottom: 19%; transform: translate(-50%, 12px); opacity: 0; padding: 10px 16px; border: 1px solid rgba(241,162,231,.52); background: rgba(22,8,55,.6); box-shadow: 0 0 35px rgba(196,73,199,.22); color: #ffe9ff; font: 500 10px 'DM Mono', monospace; letter-spacing: .1em; pointer-events: none; transition: opacity .35s ease, transform .35s ease; white-space: nowrap; }
+.message.show { opacity: 1; transform: translate(-50%, 0); }
+
+.pause-card { position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100vw - 42px)); padding: 27px 29px 30px; border: 1px solid rgba(159,236,248,.32); background: linear-gradient(150deg, rgba(6,27,57,.84), rgba(13,9,42,.88)); backdrop-filter: blur(20px); box-shadow: 0 12px 60px rgba(0,0,0,.38); text-align: center; }
+.pause-card h2 { margin: 4px 0 8px; font-size: 25px; font-weight: 400; letter-spacing: -.03em; }
+.pause-card p:not(.eyebrow) { margin: 0 0 22px; color: rgba(218,242,246,.7); font-size: 13px; line-height: 1.45; }
+
+#touch-controls { display: none; position: fixed; z-index: 4; left: 21px; right: 21px; bottom: 26px; justify-content: space-between; align-items: flex-end; pointer-events: none; }
+.touch-pad { pointer-events: auto; }
+.touch-pad > button, .touch-pad div button { width: 42px; height: 38px; margin: 2px; border: 1px solid rgba(165,235,244,.4); border-radius: 4px; background: rgba(3,25,49,.55); backdrop-filter: blur(10px); font-size: 20px; line-height: 1; touch-action: none; }
+.touch-pad > button { display: block; margin: 2px auto; }
+.touch-pad div { display: flex; }
+.touch-pad button:active { background: rgba(58,157,181,.68); }
+.touch-label { padding: 0 3px 9px 0; color: rgba(212,247,250,.6); font: 400 9px 'DM Mono', monospace; letter-spacing: .09em; }
+
+@media (max-width: 700px), (pointer: coarse) {
+  .hud-top { top: 18px; left: 19px; right: 19px; }
+  .voyage-state { font-size: 8px; }
+  .hud-bottom { left: 19px; bottom: 18px; gap: 16px; }
+  .hint { display: none; }
+  .controls { top: 17px; right: 18px; bottom: auto; gap: 5px; }
+  .controls .control-button { padding: 8px; font-size: 8px; }
+  .controls #restart-button { display: block; width: 33px; padding: 8px 4px; font-size: 0; }
+  .controls #restart-button::after { content: '↻'; font: 500 17px/1 'Space Grotesk', sans-serif; }
+  #touch-controls { display: flex; }
+  .hud-bottom { bottom: 112px; }
+  .message { bottom: 31%; max-width: calc(100vw - 40px); overflow: hidden; text-overflow: ellipsis; }
+}
+
+@media (max-height: 560px) and (orientation: landscape) {
+  .hud-bottom { bottom: 15px; }
+  #touch-controls { bottom: 12px; }
+  .hud-top { top: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control-button, .message { transition: none; }
+}

@@ -815,23 +815,59 @@ function bindControls() {
     keys.add(event.code);
   });
   window.addEventListener('keyup', (event) => keys.delete(event.code));
+  renderer.domElement.addEventListener('contextmenu', (event) => event.preventDefault());
   renderer.domElement.addEventListener('pointerdown', (event) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (event.pointerType === 'mouse' && event.button !== 0 && event.button !== 2) return;
     renderer.domElement.focus({ preventScroll: true });
-    lookPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
-    renderer.domElement.setPointerCapture(event.pointerId);
+    lookPointer = { id: event.pointerId, x: event.clientX, y: event.clientY, isMouse: event.pointerType === 'mouse' };
+    if (event.pointerType === 'mouse') {
+      try {
+        renderer.domElement.requestPointerLock?.();
+      } catch (_) {}
+    } else {
+      renderer.domElement.setPointerCapture(event.pointerId);
+    }
   });
   renderer.domElement.addEventListener('pointermove', (event) => {
-    if (!lookPointer || lookPointer.id !== event.pointerId) return;
-    const dx = event.clientX - lookPointer.x;
-    const dy = event.clientY - lookPointer.y;
-    lookPointer.x = event.clientX; lookPointer.y = event.clientY;
+    if (!lookPointer) return;
+    if (!lookPointer.isMouse && lookPointer.id !== event.pointerId) return;
+    let dx = 0;
+    let dy = 0;
+    if (document.pointerLockElement === renderer.domElement) {
+      dx = event.movementX || 0;
+      dy = event.movementY || 0;
+    } else {
+      dx = event.clientX - lookPointer.x;
+      dy = event.clientY - lookPointer.y;
+      lookPointer.x = event.clientX;
+      lookPointer.y = event.clientY;
+    }
     state.yaw -= dx * 0.0032;
     state.pitch = THREE.MathUtils.clamp(state.pitch - dy * 0.0026, -0.65, 0.5);
   });
-  const endLook = (event) => { if (lookPointer?.id === event.pointerId) lookPointer = null; };
+  const endLook = (event) => {
+    if (!lookPointer) return;
+    if (lookPointer.isMouse) {
+      if (event.type === 'pointercancel' || ((event.buttons & 1) === 0 && (event.buttons & 2) === 0)) {
+        lookPointer = null;
+        if (document.pointerLockElement === renderer.domElement) {
+          try {
+            document.exitPointerLock?.();
+          } catch (_) {}
+        }
+      }
+    } else if (lookPointer.id === event.pointerId) {
+      lookPointer = null;
+    }
+  };
   renderer.domElement.addEventListener('pointerup', endLook);
   renderer.domElement.addEventListener('pointercancel', endLook);
+  window.addEventListener('pointerup', endLook);
+  document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement !== renderer.domElement && lookPointer?.isMouse) {
+      lookPointer = null;
+    }
+  });
 
   document.querySelectorAll('[data-move]').forEach((button) => {
     const codeByMove = {
@@ -925,7 +961,7 @@ function movePlayer(delta) {
   if (moveIntent.lengthSq() === 0) return;
   moveIntent.normalize();
   const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? BOOST_SPEED : DRIFT_SPEED) * delta * (state.autoCruise ? 0.78 : 1);
-  let forward = new THREE.Vector3(Math.sin(state.yaw), 0, -Math.cos(state.yaw));
+  let forward = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw));
   if (state.autoCruise && !lookPointer && isBlocked(state.position.x + forward.x * 5.5, state.position.z + forward.z * 5.5)) {
     let nearest = null;
     let nearestDistance = Infinity;
@@ -933,10 +969,10 @@ function movePlayer(delta) {
       const distance = Math.hypot(state.position.x - collider.x, state.position.z - collider.z);
       if (distance < nearestDistance) { nearest = collider; nearestDistance = distance; }
     }
-    if (nearest) state.yaw += (nearest.x >= state.position.x ? -1 : 1) * delta * 0.9;
-    forward = new THREE.Vector3(Math.sin(state.yaw), 0, -Math.cos(state.yaw));
+    if (nearest) state.yaw += (nearest.x >= state.position.x ? 1 : -1) * delta * 0.9;
+    forward = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw));
   }
-  const right = new THREE.Vector3(Math.cos(state.yaw), 0, Math.sin(state.yaw));
+  const right = new THREE.Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw));
   const altitudeCandidate = THREE.MathUtils.clamp(state.position.y + moveIntent.y * speed, EYE_HEIGHT, MAX_ALTITUDE);
   if (!isBlocked(state.position.x, state.position.z, altitudeCandidate)) state.position.y = altitudeCandidate;
   const velocity = forward.multiplyScalar(moveIntent.z * speed).add(right.multiplyScalar(moveIntent.x * speed));

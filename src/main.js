@@ -25,6 +25,59 @@ const PLAYER_RADIUS = 1.15;
 const DRIFT_SPEED = 18.6;
 const BOOST_SPEED = 39;
 
+const BIOMES = ['field', 'garden', 'signal'];
+
+const BIOME_PALETTES = {
+  field: {
+    cA: new THREE.Color(0x0c4a83),
+    cB: new THREE.Color(0x1c9fbe),
+    cC: new THREE.Color(0x8beef1),
+    emissive: 0x063c61,
+    shardColorA: 0x1d9fb8,
+    shardColorB: 0x83e7ee,
+    shardEmissive: 0x0b6584,
+  },
+  garden: {
+    cA: new THREE.Color(0x074232),
+    cB: new THREE.Color(0x1fb884),
+    cC: new THREE.Color(0xf09adc),
+    emissive: 0x2e0e33,
+    shardColorA: 0x22b888,
+    shardColorB: 0xeb88d0,
+    shardEmissive: 0x3d0e3a,
+  },
+  signal: {
+    cA: new THREE.Color(0x240a46),
+    cB: new THREE.Color(0x78239e),
+    cC: new THREE.Color(0xff98e4),
+    emissive: 0x3a0c4f,
+    shardColorA: 0x7a1fa8,
+    shardColorB: 0xff7ecc,
+    shardEmissive: 0x4d0a42,
+  },
+};
+
+const REGION_PREFIXES = {
+  field: ['PALE', 'SILENT', 'FROST', 'HOAR', 'COLD', 'CHILL', 'CRYSTAL', 'SHIMMER', 'HALO', 'GLACIAL', 'CYAN', 'POLAR'],
+  garden: ['MINT', 'MOSS', 'VERDANT', 'FLORA', 'BLOOM', 'JADE', 'EMERALD', 'LICHEN', 'SPROUT', 'BOWER', 'FERN', 'CORAL'],
+  signal: ['SIGNAL', 'BEACON', 'PULSE', 'STATIC', 'CHIME', 'ECHO', 'RELAY', 'VECTOR', 'RADIAN', 'PHASE', 'ORBIT', 'ARRAY'],
+};
+
+const REGION_SUFFIXES = [
+  'SHELF', 'REACH', 'BASIN', 'DRIFT', 'SOUND', 'FLOE', 'EXPANSE', 'SHOAL', 'RIDGE', 'SPUR', 'CREST', 'DEEP',
+];
+
+function getChunkMetadata(cx, cz) {
+  const isAuthored = (cx === 0 && cz === -1) || (cx === -1 && cz === -1);
+  const biome = isAuthored ? 'field' : BIOMES[hash2D(cx, cz) % 3];
+  const rng = mulberry32(hash2D(cx, cz) ^ 0x4f1bbcdc);
+  const prefixes = REGION_PREFIXES[biome];
+  const prefix = prefixes[Math.floor(rng() * prefixes.length)];
+  const suffix = REGION_SUFFIXES[Math.floor(rng() * REGION_SUFFIXES.length)];
+  const regionName = `${prefix} ${suffix}`;
+  return { biome, regionName };
+}
+
 const state = {
   position: new THREE.Vector3(0, EYE_HEIGHT, 8),
   initialPosition: new THREE.Vector3(0, EYE_HEIGHT, 8),
@@ -83,6 +136,9 @@ function init() {
   updateChunks(true);
   bindControls();
   updateHud();
+  if (typeof window !== 'undefined') {
+    window.__ICE_OCEAN__ = { chunks, state, getChunkMetadata, hash2D, mulberry32, BIOMES, BIOME_PALETTES };
+  }
   requestAnimationFrame(render);
 }
 
@@ -366,6 +422,10 @@ function createChunk(cx, cz) {
   group.name = `ice-field-${cx}-${cz}`;
   group.userData.colliders = [];
 
+  const meta = getChunkMetadata(cx, cz);
+  group.userData.biome = meta.biome;
+  group.userData.regionName = meta.regionName;
+
   const special = [];
   if (cx === 0 && cz === -1) {
     special.push({ x: 12.5, z: -34, h: 32, r: 5.4, twist: 0.2 });
@@ -391,7 +451,7 @@ function createChunk(cx, cz) {
     if (Math.abs(spec.x) < 4.8 && spec.z < 9 && spec.z > -64) {
       spec.x += spec.x < 0 ? -9 : 9;
     }
-    const spire = createSpire(spec.h, spec.r, mulberry32(hash2D(cx * 17 + i, cz * 23 - i)), spec.twist);
+    const spire = createSpire(spec.h, spec.r, mulberry32(hash2D(cx * 17 + i, cz * 23 - i)), spec.twist, meta.biome);
     spire.position.set(spec.x, SEA_LEVEL - 0.05, spec.z);
     group.add(spire);
     group.userData.colliders.push({ x: spec.x, z: spec.z, r: spec.r * 0.8, h: spec.h });
@@ -408,15 +468,16 @@ function createChunk(cx, cz) {
   return group;
 }
 
-function createSpire(height, radius, rng, twist = 0) {
+function createSpire(height, radius, rng, twist = 0, biome = 'field') {
+  const palette = BIOME_PALETTES[biome] || BIOME_PALETTES.field;
   const levels = 8;
   const sides = 7;
   const positions = [];
   const colors = [];
   const ringData = [];
-  const cA = new THREE.Color(0x0c4a83);
-  const cB = new THREE.Color(0x1c9fbe);
-  const cC = new THREE.Color(0x8beef1);
+  const cA = palette.cA;
+  const cB = palette.cB;
+  const cC = palette.cC;
   for (let y = 0; y <= levels; y += 1) {
     const t = y / levels;
     const ring = [];
@@ -452,7 +513,14 @@ function createSpire(height, radius, rng, twist = 0) {
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.2, metalness: 0.12, emissive: 0x063c61, emissiveIntensity: 0.5, flatShading: true });
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.2,
+    metalness: 0.12,
+    emissive: palette.emissive,
+    emissiveIntensity: 0.5,
+    flatShading: true,
+  });
   const group = new THREE.Group();
   const mesh = new THREE.Mesh(geometry, material);
   group.add(mesh);
@@ -485,7 +553,13 @@ function createSpire(height, radius, rng, twist = 0) {
       ], 3));
       shardGeometry.setIndex([0, 1, 3, 1, 2, 3, 2, 0, 3, 0, 2, 1]);
       shardGeometry.computeVertexNormals();
-      group.add(new THREE.Mesh(shardGeometry, new THREE.MeshStandardMaterial({ color: r ? 0x1d9fb8 : 0x83e7ee, emissive: 0x0b6584, emissiveIntensity: 0.75, roughness: 0.2, flatShading: true })));
+      group.add(new THREE.Mesh(shardGeometry, new THREE.MeshStandardMaterial({
+        color: r ? palette.shardColorA : palette.shardColorB,
+        emissive: palette.shardEmissive,
+        emissiveIntensity: 0.75,
+        roughness: 0.2,
+        flatShading: true,
+      })));
     }
   }
   return group;
@@ -761,3 +835,6 @@ function mulberry32(seed) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
+
+export { getChunkMetadata, hash2D, mulberry32, BIOMES, BIOME_PALETTES };
+

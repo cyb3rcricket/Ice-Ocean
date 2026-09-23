@@ -37,6 +37,7 @@ const BIOME_PALETTES = {
     shardColorA: 0x1d9fb8,
     shardColorB: 0x83e7ee,
     shardEmissive: 0x0b6584,
+    filamentColor: 0x7cfcff,
   },
   garden: {
     cA: new THREE.Color(0x074232),
@@ -46,6 +47,7 @@ const BIOME_PALETTES = {
     shardColorA: 0x22b888,
     shardColorB: 0xeb88d0,
     shardEmissive: 0x3d0e3a,
+    filamentColor: 0x58ffd0,
   },
   signal: {
     cA: new THREE.Color(0x240a46),
@@ -55,8 +57,12 @@ const BIOME_PALETTES = {
     shardColorA: 0x7a1fa8,
     shardColorB: 0xff7ecc,
     shardEmissive: 0x4d0a42,
+    filamentColor: 0xff86ea,
   },
 };
+
+const MAX_FILAMENT_SEGMENTS = 8000;
+const MAX_FILAMENT_FLOATS = MAX_FILAMENT_SEGMENTS * 6;
 
 const REGION_PREFIXES = {
   field: ['PALE', 'SILENT', 'FROST', 'HOAR', 'COLD', 'CHILL', 'CRYSTAL', 'SHIMMER', 'HALO', 'GLACIAL', 'CYAN', 'POLAR'],
@@ -153,6 +159,10 @@ function init() {
       updateChunks,
       showMessage,
       clearToast,
+      buildChunkFilaments,
+      MAX_FILAMENT_SEGMENTS,
+      renderer,
+      disposeObject,
     };
   }
   requestAnimationFrame(render);
@@ -442,6 +452,114 @@ function updateChunks(force = false) {
   app.dataset.chunks = String(chunks.size);
 }
 
+function buildChunkFilaments(spires = [], biome = 'field') {
+  const spireList = Array.isArray(spires) ? spires : (spires ? [spires] : []);
+  const palette = BIOME_PALETTES[biome] || BIOME_PALETTES.field;
+  const positions = [];
+
+  function pushSegment(x1, y1, z1, x2, y2, z2) {
+    if (positions.length + 6 > MAX_FILAMENT_FLOATS) return false;
+    positions.push(x1, y1, z1, x2, y2, z2);
+    return true;
+  }
+
+  for (let i = 0; i < spireList.length; i += 1) {
+    if (positions.length >= MAX_FILAMENT_FLOATS) break;
+    const spire = spireList[i];
+    if (!spire) continue;
+    const ringData = spire.userData?.ringData;
+    if (!Array.isArray(ringData) || ringData.length === 0 || !Array.isArray(ringData[0]) || ringData[0].length === 0) continue;
+
+    const levels = ringData.length - 1;
+    const sides = ringData[0].length;
+    const sx = spire.position?.x ?? 0;
+    const sy = spire.position?.y ?? 0;
+    const sz = spire.position?.z ?? 0;
+    const scale = 1.015;
+    const yOffset = 0.025;
+
+    let stopped = false;
+    for (let y = 0; y <= levels && !stopped; y += 1) {
+      const ring = ringData[y];
+      if (!Array.isArray(ring)) continue;
+      for (let s = 0; s < sides; s += 1) {
+        const p1 = ring[s];
+        const p2 = ring[(s + 1) % sides];
+        if (!p1 || !p2) continue;
+        if (!pushSegment(
+          sx + p1.x * scale, sy + p1.y + yOffset, sz + p1.z * scale,
+          sx + p2.x * scale, sy + p2.y + yOffset, sz + p2.z * scale
+        )) {
+          stopped = true;
+          break;
+        }
+      }
+    }
+
+    for (let y = 0; y < levels && !stopped; y += 1) {
+      const rCurr = ringData[y];
+      const rNext = ringData[y + 1];
+      if (!Array.isArray(rCurr) || !Array.isArray(rNext)) continue;
+      for (let s = 0; s < sides; s += 1) {
+        const nextSide = (s + 1) % sides;
+        const p1 = rCurr[s];
+        const p2 = rNext[s];
+        const p3 = rNext[nextSide];
+        const p4 = rCurr[nextSide];
+        if (!p1 || !p2 || !p3 || !p4) continue;
+
+        // Vertical rib
+        if (!pushSegment(
+          sx + p1.x * scale, sy + p1.y + yOffset, sz + p1.z * scale,
+          sx + p2.x * scale, sy + p2.y + yOffset, sz + p2.z * scale
+        )) { stopped = true; break; }
+
+        // Forward diagonal
+        if (!pushSegment(
+          sx + p1.x * scale, sy + p1.y + yOffset, sz + p1.z * scale,
+          sx + p3.x * scale, sy + p3.y + yOffset, sz + p3.z * scale
+        )) { stopped = true; break; }
+
+        // Counter diagonal
+        if (!pushSegment(
+          sx + p4.x * scale, sy + p4.y + yOffset, sz + p4.z * scale,
+          sx + p2.x * scale, sy + p2.y + yOffset, sz + p2.z * scale
+        )) { stopped = true; break; }
+      }
+    }
+
+    for (let y = 0; y < levels - 1 && !stopped; y += 1) {
+      const rCurr = ringData[y];
+      const rNext2 = ringData[y + 2];
+      if (!Array.isArray(rCurr) || !Array.isArray(rNext2)) continue;
+      for (let s = 0; s < sides; s += 1) {
+        const sNext2 = (s + 2) % sides;
+        const p1 = rCurr[s];
+        const p2 = rNext2[sNext2];
+        if (!p1 || !p2) continue;
+        if (!pushSegment(
+          sx + p1.x * scale, sy + p1.y + yOffset, sz + p1.z * scale,
+          sx + p2.x * scale, sy + p2.y + yOffset, sz + p2.z * scale
+        )) { stopped = true; break; }
+      }
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeBoundingSphere();
+
+  const material = new THREE.LineBasicMaterial({
+    color: palette.filamentColor || 0x7cfcff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  return new THREE.LineSegments(geometry, material);
+}
+
 function createChunk(cx, cz) {
   const rng = mulberry32(hash2D(cx, cz));
   const group = new THREE.Group();
@@ -462,6 +580,7 @@ function createChunk(cx, cz) {
     special.push({ x: -7.5, z: -17, h: 11, r: 2.5, twist: 0.3 });
   }
   const count = special.length || 1 + Math.floor(rng() * 3);
+  const spires = [];
   for (let i = 0; i < count; i += 1) {
     const spec = special[i] || {
       x: cx * CHUNK_SIZE + 5 + rng() * (CHUNK_SIZE - 10),
@@ -480,8 +599,15 @@ function createChunk(cx, cz) {
     const spire = createSpire(spec.h, spec.r, mulberry32(hash2D(cx * 17 + i, cz * 23 - i)), spec.twist, meta.biome);
     spire.position.set(spec.x, SEA_LEVEL - 0.05, spec.z);
     group.add(spire);
+    spires.push(spire);
     group.userData.colliders.push({ x: spec.x, z: spec.z, r: spec.r * 0.8, h: spec.h });
   }
+
+  const filaments = buildChunkFilaments(spires, meta.biome);
+  filaments.name = `filaments-${cx}-${cz}`;
+  group.add(filaments);
+  group.userData.filaments = filaments;
+  group.userData.filamentAge = 0;
 
   const artifactChance = ((Math.abs(hash2D(cx + 7, cz - 11)) % 9) === 0) || (cx === 0 && cz === -1);
   if (artifactChance) {
@@ -548,6 +674,7 @@ function createSpire(height, radius, rng, twist = 0, biome = 'field') {
     flatShading: true,
   });
   const group = new THREE.Group();
+  group.userData.ringData = ringData;
   const mesh = new THREE.Mesh(geometry, material);
   group.add(mesh);
   const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x7cfcff, transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -727,7 +854,14 @@ function disposeObject(object) {
       const materials = Array.isArray(child.material) ? child.material : [child.material];
       materials.forEach((material) => { if (material.map) material.map.dispose(); material.dispose(); });
     }
+    if (child.userData) {
+      if (child.userData.filaments) child.userData.filaments = null;
+      if (child.userData.ringData) child.userData.ringData = null;
+    }
   });
+  if (object.userData) {
+    object.userData.filaments = null;
+  }
 }
 
 function movePlayer(delta) {
@@ -845,6 +979,11 @@ function render() {
   ocean.material.uniforms.uTime.value = elapsed;
   planet.material.uniforms.uTime.value = elapsed;
   for (const chunk of chunks.values()) {
+    if (chunk.userData.filaments && (chunk.userData.filamentAge ?? 0) < 1.2) {
+      const nextAge = Math.min(1.2, (chunk.userData.filamentAge ?? 0) + delta);
+      chunk.userData.filamentAge = nextAge;
+      chunk.userData.filaments.material.opacity = nextAge / 1.2;
+    }
     const artifact = chunk.userData.artifact;
     if (artifact && !artifact.userData.discovered) {
       artifact.rotation.y += delta * 0.8;
@@ -881,5 +1020,17 @@ function mulberry32(seed) {
   };
 }
 
-export { getChunkMetadata, hash2D, mulberry32, BIOMES, BIOME_PALETTES, restartVoyage, updateHud, clearToast, showMessage };
+export {
+  getChunkMetadata,
+  hash2D,
+  mulberry32,
+  BIOMES,
+  BIOME_PALETTES,
+  restartVoyage,
+  updateHud,
+  clearToast,
+  showMessage,
+  buildChunkFilaments,
+  MAX_FILAMENT_SEGMENTS,
+};
 

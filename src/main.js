@@ -7,6 +7,7 @@ const distanceReadout = document.querySelector('#distance');
 const chunksReadout = document.querySelector('#chunks');
 const discoveriesReadout = document.querySelector('#discoveries');
 const stateLabel = document.querySelector('#state-label');
+const regionLabel = document.querySelector('#region-label');
 const message = document.querySelector('#message');
 const pauseCard = document.querySelector('#pause-card');
 const pauseButton = document.querySelector('#pause-button');
@@ -89,6 +90,8 @@ const state = {
   paused: false,
   autoCruise: false,
   currentCell: null,
+  currentBiome: null,
+  currentRegion: null,
 };
 
 const keys = new Set();
@@ -137,7 +140,20 @@ function init() {
   bindControls();
   updateHud();
   if (typeof window !== 'undefined') {
-    window.__ICE_OCEAN__ = { chunks, state, getChunkMetadata, hash2D, mulberry32, BIOMES, BIOME_PALETTES };
+    window.__ICE_OCEAN__ = {
+      chunks,
+      state,
+      getChunkMetadata,
+      hash2D,
+      mulberry32,
+      BIOMES,
+      BIOME_PALETTES,
+      restartVoyage,
+      updateHud,
+      updateChunks,
+      showMessage,
+      clearToast,
+    };
   }
   requestAnimationFrame(render);
 }
@@ -389,6 +405,16 @@ function updateChunks(force = false) {
   const cellZ = Math.floor(state.position.z / CHUNK_SIZE);
   if (!force && state.currentCell && state.currentCell.x === cellX && state.currentCell.z === cellZ) return;
   state.currentCell = { x: cellX, z: cellZ };
+  const cellMeta = getChunkMetadata(cellX, cellZ);
+  if (!force && state.currentBiome !== null && state.currentBiome !== cellMeta.biome) {
+    showMessage(`BIOME TRANSITION · ${cellMeta.biome.toUpperCase()}`);
+  }
+  state.currentBiome = cellMeta.biome;
+  state.currentRegion = cellMeta.regionName;
+  if (regionLabel) {
+    regionLabel.textContent = cellMeta.regionName;
+  }
+  app.dataset.region = cellMeta.regionName;
   for (let x = cellX - STREAM_RADIUS; x <= cellX + STREAM_RADIUS; x += 1) {
     for (let z = cellZ - STREAM_RADIUS; z <= cellZ + STREAM_RADIUS; z += 1) {
       const id = `${x}:${z}`;
@@ -678,14 +704,20 @@ function togglePause() {
 
 function restartVoyage() {
   keys.clear();
+  clearToast();
   state.position.copy(state.initialPosition);
   state.yaw = 0; state.pitch = -0.045;
-  state.distance = 0; state.discoveries = 0; state.discoveredIds.clear(); state.currentCell = null;
+  state.distance = 0; state.discoveries = 0; state.discoveredIds.clear();
+  state.currentCell = null;
+  state.currentBiome = null;
+  state.currentRegion = null;
+  if (regionLabel) regionLabel.textContent = '';
+  delete app.dataset.region;
   for (const chunk of chunks.values()) { world.remove(chunk); disposeObject(chunk); }
   chunks.clear(); colliders.length = 0;
   state.paused = false; state.autoCruise = false;
   pauseCard.hidden = true; pauseButton.textContent = 'PAUSE'; cruiseButton.textContent = 'AUTO CRUISE'; stateLabel.textContent = 'VOYAGE ACTIVE'; app.classList.remove('paused');
-  updateChunks(true); updateHud(); showMessage('VOYAGE RESET · THE ICE REMEMBERS');
+  updateChunks(true); updateHud();
 }
 
 function disposeObject(object) {
@@ -774,11 +806,24 @@ function updateHud() {
   distanceReadout.innerHTML = `${state.distance.toFixed(1)} <small>NM</small>`;
   discoveriesReadout.innerHTML = `${state.discoveries} <small>FOUND</small>`;
   chunksReadout.innerHTML = `${chunks.size} <small>ACTIVE</small>`;
+  const cellX = Math.floor(state.position.x / CHUNK_SIZE);
+  const cellZ = Math.floor(state.position.z / CHUNK_SIZE);
+  const currentMeta = getChunkMetadata(cellX, cellZ);
+  if (regionLabel) {
+    regionLabel.textContent = currentMeta.regionName;
+  }
+  app.dataset.region = currentMeta.regionName;
   app.dataset.distance = state.distance.toFixed(2);
   app.dataset.chunks = String(chunks.size);
   app.dataset.discoveries = String(state.discoveries);
   app.dataset.position = `${state.position.x.toFixed(2)},${state.position.y.toFixed(2)},${state.position.z.toFixed(2)}`;
   app.dataset.altitude = state.position.y.toFixed(2);
+}
+
+function clearToast() {
+  clearTimeout(messageTimer);
+  message.classList.remove('show');
+  message.textContent = '';
 }
 
 function showMessage(text) {
@@ -836,5 +881,5 @@ function mulberry32(seed) {
   };
 }
 
-export { getChunkMetadata, hash2D, mulberry32, BIOMES, BIOME_PALETTES };
+export { getChunkMetadata, hash2D, mulberry32, BIOMES, BIOME_PALETTES, restartVoyage, updateHud, clearToast, showMessage };
 

@@ -913,14 +913,10 @@ function disposeObject(object) {
 function movePlayer(delta) {
   if (state.paused) return;
   const horizontal = new THREE.Vector2();
-  if (keys.has('KeyA')) horizontal.x += 1;
-  if (keys.has('ArrowLeft')) horizontal.x -= 1;
-  if (keys.has('KeyD')) horizontal.x -= 1;
-  if (keys.has('ArrowRight')) horizontal.x += 1;
-  if (keys.has('KeyW')) horizontal.y -= 1;
-  if (keys.has('ArrowUp')) horizontal.y += 1;
-  if (keys.has('KeyS')) horizontal.y += 1;
-  if (keys.has('ArrowDown')) horizontal.y -= 1;
+  if (keys.has('KeyA') || keys.has('ArrowLeft')) horizontal.x -= 1;
+  if (keys.has('KeyD') || keys.has('ArrowRight')) horizontal.x += 1;
+  if (keys.has('KeyW') || keys.has('ArrowUp')) horizontal.y += 1;
+  if (keys.has('KeyS') || keys.has('ArrowDown')) horizontal.y -= 1;
   if (state.autoCruise) horizontal.y = Math.max(horizontal.y, 0.7);
   let vertical = 0;
   if (keys.has('KeyE')) vertical += 1;

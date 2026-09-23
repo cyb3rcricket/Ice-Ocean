@@ -39,6 +39,8 @@ h1 { margin: 0; font-size: clamp(20px, 3vw, 34px); line-height: .9; font-weight:
 .readout small { font-size: 9px; letter-spacing: .08em; color: rgba(192,244,250,.56); }
 .readout-region { min-width: 0; max-width: clamp(120px, 16vw, 220px); }
 .readout-region strong, #region-label { display: block; font-size: clamp(15px, 2vw, 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.readout-cycle { min-width: 0; max-width: clamp(70px, 10vw, 120px); }
+.readout-cycle strong, #cycle-label { display: block; font-size: clamp(15px, 2vw, 24px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hint { margin: 0 0 3px clamp(8px, 2vw, 24px); color: rgba(208,245,249,.66); font: 400 10px 'DM Mono', monospace; letter-spacing: .06em; white-space: nowrap; }
 .key { color: #effeff; border-bottom: 1px solid rgba(158,235,244,.45); padding-bottom: 2px; margin: 0 2px; }
 
@@ -75,7 +77,7 @@ h1 { margin: 0; font-size: clamp(20px, 3vw, 34px); line-height: .9; font-weight:
     left: 19px;
     right: 19px;
     bottom: 112px;
-    gap: clamp(8px, 2.4vw, 14px);
+    gap: clamp(6px, 2vw, 12px);
     max-width: calc(100vw - 38px);
     flex-wrap: nowrap;
   }
@@ -83,7 +85,12 @@ h1 { margin: 0; font-size: clamp(20px, 3vw, 34px); line-height: .9; font-weight:
   .readout-region {
     flex-shrink: 1;
     min-width: 0;
-    max-width: clamp(82px, 25vw, 125px);
+    max-width: clamp(68px, 18vw, 100px);
+  }
+  .readout-cycle {
+    flex-shrink: 0;
+    min-width: 0;
+    max-width: clamp(48px, 13vw, 70px);
   }
   .hint { display: none; }
   .controls { top: 17px; right: 18px; bottom: auto; gap: 5px; }
@@ -95,11 +102,25 @@ h1 { margin: 0; font-size: clamp(20px, 3vw, 34px); line-height: .9; font-weight:
 }
 
 @media (max-height: 560px) and (orientation: landscape) {
-  .hud-bottom { bottom: 15px; flex-wrap: nowrap; gap: clamp(10px, 2vw, 20px); }
+  .hud-bottom {
+    bottom: 15px;
+    right: auto;
+    width: max-content;
+    max-width: calc(100vw - 280px);
+    flex-wrap: nowrap;
+    gap: clamp(6px, 1.2vw, 12px);
+  }
   .hint { display: none; }
   #touch-controls { bottom: 12px; }
   .hud-top { top: 13px; }
-  .readout-region { max-width: 180px; }
+  .readout-region { max-width: clamp(75px, 12vw, 110px); }
+  .readout-cycle { max-width: clamp(48px, 8vw, 65px); }
+  .controls {
+    right: clamp(14px, 2.5vw, 36px);
+    bottom: 12px;
+    gap: 6px;
+  }
+  .controls .control-button { padding: 8px 10px; font-size: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

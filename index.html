@@ -7,7 +7,7 @@
     <title>ICE OCEAN — The Blue Silence</title>
   </head>
   <body>
-    <main id="app" aria-label="Ice Ocean exploration game">
+    <main id="app" data-cycle="dawn" aria-label="Ice Ocean exploration game">
       <div id="scene" aria-hidden="true"></div>
 
       <header class="hud hud-top">
@@ -40,6 +40,10 @@
         <div id="region" class="readout readout-region">
           <span class="readout-label">REGION</span>
           <strong id="region-label"></strong>
+        </div>
+        <div id="cycle" class="readout readout-cycle">
+          <span class="readout-label">CYCLE</span>
+          <strong id="cycle-label">DAWN</strong>
         </div>
         <p class="hint"><span class="key">WASD</span> move <span class="key">E/Q</span> rise / dive <span class="key">SHIFT</span> boost <span class="key">DRAG</span> look</p>
       </section>

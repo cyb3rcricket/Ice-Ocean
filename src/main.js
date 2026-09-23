@@ -8,6 +8,7 @@ const chunksReadout = document.querySelector('#chunks');
 const discoveriesReadout = document.querySelector('#discoveries');
 const stateLabel = document.querySelector('#state-label');
 const regionLabel = document.querySelector('#region-label');
+const cycleLabel = document.querySelector('#cycle-label');
 const message = document.querySelector('#message');
 const pauseCard = document.querySelector('#pause-card');
 const pauseButton = document.querySelector('#pause-button');
@@ -85,6 +86,20 @@ function getChunkMetadata(cx, cz) {
   return { biome, regionName };
 }
 
+const CYCLE_DURATION = 60;
+
+function getCycleState(time = 0) {
+  const normalized = ((time % CYCLE_DURATION) + CYCLE_DURATION) % CYCLE_DURATION;
+  const progress = normalized / CYCLE_DURATION;
+  const isNight = progress >= 0.5;
+  const name = isNight ? 'night' : 'dawn';
+  const label = isNight ? 'NIGHT' : 'DAWN';
+  const intensity = 0.8 - 0.55 * Math.sin(progress * Math.PI * 2);
+  return { name, label, progress, intensity };
+}
+
+let cycleTime = 0;
+
 const state = {
   position: new THREE.Vector3(0, EYE_HEIGHT, 8),
   initialPosition: new THREE.Vector3(0, EYE_HEIGHT, 8),
@@ -98,6 +113,21 @@ const state = {
   currentCell: null,
   currentBiome: null,
   currentRegion: null,
+  get cycleTime() {
+    return cycleTime;
+  },
+  set cycleTime(v) {
+    const num = Number(v);
+    cycleTime = Number.isFinite(num) ? num : 0;
+    const currentCycle = getCycleState(cycleTime);
+    state.currentCycle = currentCycle.name;
+    if (cycleLabel) cycleLabel.textContent = currentCycle.label;
+    if (app) app.dataset.cycle = currentCycle.name;
+    if (sky && sky.material && sky.material.uniforms && sky.material.uniforms.uAuroraIntensity) {
+      sky.material.uniforms.uAuroraIntensity.value = currentCycle.intensity;
+    }
+  },
+  currentCycle: 'dawn',
 };
 
 const keys = new Set();
@@ -149,6 +179,10 @@ function init() {
     window.__ICE_OCEAN__ = {
       chunks,
       state,
+      get cycleTime() { return state.cycleTime; },
+      set cycleTime(v) { state.cycleTime = v; },
+      getCycleState,
+      CYCLE_DURATION,
       getChunkMetadata,
       hash2D,
       mulberry32,
@@ -183,7 +217,10 @@ function addSky() {
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
-    uniforms: { uTime: { value: 0 } },
+    uniforms: {
+      uTime: { value: 0 },
+      uAuroraIntensity: { value: 0.8 },
+    },
     vertexShader: `
       varying vec3 vDirection;
       void main() {
@@ -194,6 +231,7 @@ function addSky() {
     `,
     fragmentShader: `
       uniform float uTime;
+      uniform float uAuroraIntensity;
       varying vec3 vDirection;
       void main() {
         vec3 d = normalize(vDirection);
@@ -206,7 +244,7 @@ function addSky() {
         float ribbon2 = sin(d.x * 12.0 - d.y * 7.0 - uTime * 0.012);
         float aurora = smoothstep(0.91, 0.995, ribbon) * smoothstep(-0.04, 0.48, d.y);
         aurora += smoothstep(0.94, 0.998, ribbon2) * 0.28 * smoothstep(-0.12, 0.42, d.y);
-        col += vec3(0.32, 0.018, 0.24) * aurora;
+        col += vec3(0.32, 0.018, 0.24) * (aurora * uAuroraIntensity);
         col += vec3(0.06, 0.15, 0.34) * pow(max(0.0, 1.0 - abs(d.y - 0.2) * 2.6), 4.0);
         gl_FragColor = vec4(col, 1.0);
       }
@@ -838,8 +876,16 @@ function restartVoyage() {
   state.currentCell = null;
   state.currentBiome = null;
   state.currentRegion = null;
+  cycleTime = 0;
+  state.cycleTime = 0;
+  state.currentCycle = 'dawn';
   if (regionLabel) regionLabel.textContent = '';
+  if (cycleLabel) cycleLabel.textContent = 'DAWN';
   delete app.dataset.region;
+  app.dataset.cycle = 'dawn';
+  if (sky && sky.material && sky.material.uniforms && sky.material.uniforms.uAuroraIntensity) {
+    sky.material.uniforms.uAuroraIntensity.value = getCycleState(0).intensity;
+  }
   for (const chunk of chunks.values()) { world.remove(chunk); disposeObject(chunk); }
   chunks.clear(); colliders.length = 0;
   state.paused = false; state.autoCruise = false;
@@ -946,6 +992,12 @@ function updateHud() {
   if (regionLabel) {
     regionLabel.textContent = currentMeta.regionName;
   }
+  const currentCycle = getCycleState(cycleTime);
+  if (cycleLabel) {
+    cycleLabel.textContent = currentCycle.label;
+  }
+  state.currentCycle = currentCycle.name;
+  app.dataset.cycle = currentCycle.name;
   app.dataset.region = currentMeta.regionName;
   app.dataset.distance = state.distance.toFixed(2);
   app.dataset.chunks = String(chunks.size);
@@ -968,6 +1020,15 @@ function showMessage(text) {
 function render() {
   const delta = Math.min(clock.getDelta(), 0.05);
   elapsed += delta;
+  if (!state.paused) {
+    cycleTime += delta;
+  }
+  const currentCycle = getCycleState(cycleTime);
+  if (currentCycle.name !== state.currentCycle) {
+    state.currentCycle = currentCycle.name;
+    if (cycleLabel) cycleLabel.textContent = currentCycle.label;
+    app.dataset.cycle = currentCycle.name;
+  }
   movePlayer(delta);
   updateChunks();
   checkDiscoveries();
@@ -976,6 +1037,7 @@ function render() {
   ocean.position.x = Math.floor(state.position.x / 32) * 32;
   ocean.position.z = Math.floor(state.position.z / 32) * 32;
   sky.material.uniforms.uTime.value = elapsed;
+  sky.material.uniforms.uAuroraIntensity.value = currentCycle.intensity;
   ocean.material.uniforms.uTime.value = elapsed;
   planet.material.uniforms.uTime.value = elapsed;
   for (const chunk of chunks.values()) {
@@ -1021,6 +1083,7 @@ function mulberry32(seed) {
 }
 
 export {
+  state,
   getChunkMetadata,
   hash2D,
   mulberry32,
@@ -1032,5 +1095,7 @@ export {
   showMessage,
   buildChunkFilaments,
   MAX_FILAMENT_SEGMENTS,
+  getCycleState,
+  CYCLE_DURATION,
 };
 

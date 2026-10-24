@@ -1,3 +1,7 @@
+> [!NOTE]
+> **This repository is archived.** Ice-Ocean was folded into [Living-Poster](https://github.com/cyb3rcricket/Living-Poster) as a named variant — its code now lives at [Living-Poster/tree/main/variants/ice-ocean](https://github.com/cyb3rcricket/Living-Poster/tree/main/variants/ice-ocean), preserved exactly as-is.
+> Nothing new will land here. Living-Poster is where the streamed-world work continues.
+
 # ICE OCEAN
 
 `ICE OCEAN` is a small first person exploration game built with Vite and Three.js. You drift over a dark animated sea beneath a blue violet planet, then steer through seeded ice fields to find pink signal artifacts.
@@ -11,6 +15,6 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 Open [http://127.0.0.1:5173/](http://127.0.0.1:5173/).
 
-Use `WASD` or the arrow keys to move, press `E` to rise and `Q` to dive, drag the scene to look around, and hold `Shift` for a faster drift. The traveler moves at 18.6 units per second (39 while boosting), with altitude clamped between sea clearance and 150 units. `Auto Cruise` moves forward hands free while still allowing drag steering. `Space` or `Pause` freezes the voyage and clears movement input. `R` or `Restart Voyage` returns to the opening composition, clears discoveries, and regenerates the initial fields. On touch screens, use the directional pad, `RISE` / `DIVE` buttons, and drag the sky to look.
+Use `WASD` or the arrow keys to move, press `E` to rise and `Q` to dive, drag the scene to look around, and hold `Shift` for a faster drift. The traveler moves at 18.6 units per second (39 while boosting), with altitude clamped between sea clearance and 150 units. `Auto Cruise` moves forward hands free while still allowing drag steering. `Space` or `Pause` freezes the voyage and clears movement input, `R` or `Restart Voyage` returns to the opening composition, clears discoveries, and regenerates the initial fields. On touch screens, use the directional pad, `RISE` / `DIVE` buttons, and drag the sky to look.
 
 The world is generated from a fixed seed. Ice fields are arranged in 34 unit chunks around the traveler and streamed in a 5 by 5 window; distant chunks and their geometry are disposed, so memory remains bounded while travel continues in every direction. The same chunk coordinates always produce the same spires and artifacts. Spire collision is height-aware, so fields can be flown over while descent through their bodies is blocked. Discoveries use three-dimensional distance. The HUD exposes `data-distance`, `data-chunks`, `data-discoveries`, `data-position`, and `data-altitude` on `#app` for browser checks.

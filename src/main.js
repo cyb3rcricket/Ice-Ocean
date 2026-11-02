@@ -136,6 +136,7 @@ const colliders = [];
 let renderer;
 let camera;
 let world;
+let backdrop;
 let ocean;
 let sky;
 let planet;
@@ -152,6 +153,8 @@ function init() {
   clock = new THREE.Clock();
   world = new THREE.Scene();
   world.background = new THREE.Color(0x030817);
+  backdrop = new THREE.Group();
+  world.add(backdrop);
 
   camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 480);
   camera.rotation.order = 'YXZ';
@@ -209,7 +212,7 @@ function addLighting() {
   world.add(moonFill);
   const warmRim = new THREE.PointLight(0xff9a64, 22, 130, 1.8);
   warmRim.position.set(18, 28, -44);
-  world.add(warmRim);
+  backdrop.add(warmRim);
 }
 
 function addSky() {
@@ -253,7 +256,7 @@ function addSky() {
   sky = new THREE.Mesh(geometry, material);
   sky.frustumCulled = false;
   sky.renderOrder = -10;
-  world.add(sky);
+  backdrop.add(sky);
 }
 
 function addStars() {
@@ -282,7 +285,7 @@ function addStars() {
   const material = new THREE.PointsMaterial({ size: 0.7, vertexColors: true, transparent: true, opacity: 0.86, sizeAttenuation: true, depthWrite: false, blending: THREE.AdditiveBlending });
   const stars = new THREE.Points(geometry, material);
   stars.frustumCulled = false;
-  world.add(stars);
+  backdrop.add(stars);
 }
 
 function addPlanet() {
@@ -325,30 +328,30 @@ function addPlanet() {
   planet = new THREE.Mesh(geometry, material);
   planet.position.set(27, 26, -93);
   planet.renderOrder = -2;
-  world.add(planet);
+  backdrop.add(planet);
 
   const atmosphereMaterial = new THREE.MeshBasicMaterial({ color: 0x4ca8ff, transparent: true, opacity: 0.18, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false });
   planetAtmosphere = new THREE.Mesh(new THREE.SphereGeometry(40.3, 48, 32), atmosphereMaterial);
   planetAtmosphere.position.copy(planet.position);
   planetAtmosphere.renderOrder = -1;
-  world.add(planetAtmosphere);
+  backdrop.add(planetAtmosphere);
 
   const sunTexture = makeSunTexture();
   sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: sunTexture, color: 0xffc47c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
   sun.position.set(32, 31, -54);
   sun.scale.set(17, 17, 1);
-  world.add(sun);
+  backdrop.add(sun);
   const horizontal = new THREE.Sprite(new THREE.SpriteMaterial({ map: sunTexture, color: 0xff8a62, transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending, depthWrite: false }));
   horizontal.position.copy(sun.position);
   horizontal.scale.set(42, 2.5, 1);
-  world.add(horizontal);
+  backdrop.add(horizontal);
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: sunTexture, color: 0xff9c58, transparent: true, opacity: 0.24, blending: THREE.AdditiveBlending, depthWrite: false }));
   halo.position.copy(sun.position);
   halo.scale.set(29, 29, 1);
-  world.add(halo);
+  backdrop.add(halo);
   const sunLight = new THREE.PointLight(0xffa369, 32, 140, 1.6);
   sunLight.position.copy(sun.position);
-  world.add(sunLight);
+  backdrop.add(sunLight);
 }
 
 function makeSunTexture() {
@@ -486,7 +489,7 @@ function updateChunks(force = false) {
       chunks.delete(id);
     }
   }
-  chunksReadout.textContent = `${chunks.size} ACTIVE`;
+  chunksReadout.innerHTML = `${chunks.size} <small>ACTIVE</small>`;
   app.dataset.chunks = String(chunks.size);
 }
 
@@ -611,11 +614,12 @@ function createChunk(cx, cz) {
   const special = [];
   if (cx === 0 && cz === -1) {
     special.push({ x: 12.5, z: -34, h: 32, r: 5.4, twist: 0.2 });
-    special.push({ x: -8.2, z: -28, h: 14, r: 2.8, twist: 1.4 });
     special.push({ x: 21.2, z: -28, h: 20, r: 3.8, twist: 2.8 });
   } else if (cx === -1 && cz === -1) {
-    special.push({ x: -15, z: -35, h: 25, r: 4.6, twist: 2.1 });
+    special.push({ x: -8.2, z: -28, h: 14, r: 2.8, twist: 1.4 });
     special.push({ x: -7.5, z: -17, h: 11, r: 2.5, twist: 0.3 });
+  } else if (cx === -1 && cz === -2) {
+    special.push({ x: -15, z: -35, h: 25, r: 4.6, twist: 2.1 });
   }
   const count = special.length || 1 + Math.floor(rng() * 3);
   const spires = [];
@@ -638,7 +642,17 @@ function createChunk(cx, cz) {
     spire.position.set(spec.x, SEA_LEVEL - 0.05, spec.z);
     group.add(spire);
     spires.push(spire);
-    group.userData.colliders.push({ x: spec.x, z: spec.z, r: spec.r * 0.8, h: spec.h });
+    let radius = 0;
+    let height = 0;
+    spire.traverse((part) => {
+      if (!part.isMesh) return;
+      const vertices = part.geometry.getAttribute('position');
+      for (let vertex = 0; vertex < vertices.count; vertex += 1) {
+        radius = Math.max(radius, Math.hypot(vertices.getX(vertex), vertices.getZ(vertex)));
+        height = Math.max(height, vertices.getY(vertex));
+      }
+    });
+    group.userData.colliders.push({ x: spec.x, z: spec.z, r: radius, h: spire.position.y + height });
   }
 
   const filaments = buildChunkFilaments(spires, meta.biome);
@@ -647,11 +661,12 @@ function createChunk(cx, cz) {
   group.userData.filaments = filaments;
   group.userData.filamentAge = 0;
 
-  const artifactChance = ((Math.abs(hash2D(cx + 7, cz - 11)) % 9) === 0) || (cx === 0 && cz === -1);
+  const openingArtifact = cx === -1 && cz === -2;
+  const artifactChance = openingArtifact || (!(cx === 0 && cz === -1) && (Math.abs(hash2D(cx + 7, cz - 11)) % 9) === 0);
   if (artifactChance) {
-    const artifactX = cx === 0 && cz === -1 ? -4.5 : cx * CHUNK_SIZE + 7 + rng() * 20;
-    const artifactZ = cx === 0 && cz === -1 ? -40 : cz * CHUNK_SIZE + 7 + rng() * 20;
-    const artifact = createArtifact(`artifact-${cx}-${cz}`, artifactX, artifactZ);
+    const artifactX = openingArtifact ? -4.5 : cx * CHUNK_SIZE + 7 + rng() * 20;
+    const artifactZ = openingArtifact ? -40 : cz * CHUNK_SIZE + 7 + rng() * 20;
+    const artifact = createArtifact(openingArtifact ? 'artifact-0--1' : `artifact-${cx}-${cz}`, artifactX, artifactZ);
     group.add(artifact);
     group.userData.artifact = artifact;
   }
@@ -879,6 +894,11 @@ function bindControls() {
     const clear = (event) => { event.preventDefault(); keys.delete(code); };
     button.addEventListener('pointerup', clear); button.addEventListener('pointercancel', clear); button.addEventListener('pointerleave', clear);
   });
+  document.querySelectorAll('.controls button, #pause-card button').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      if (event.detail > 0) button.blur();
+    });
+  });
   cruiseButton.addEventListener('click', () => {
     state.autoCruise = !state.autoCruise;
     cruiseButton.textContent = state.autoCruise ? 'PAUSE CRUISE' : 'AUTO CRUISE';
@@ -1051,8 +1071,8 @@ function showMessage(text) {
 
 function render() {
   const delta = Math.min(clock.getDelta(), 0.05);
-  elapsed += delta;
   if (!state.paused) {
+    elapsed += delta;
     cycleTime += delta;
   }
   const currentCycle = getCycleState(cycleTime);
@@ -1064,8 +1084,9 @@ function render() {
   movePlayer(delta);
   updateChunks();
   checkDiscoveries();
-  camera.position.set(state.position.x, state.position.y + (state.paused ? 0 : Math.sin(elapsed * 1.35) * 0.07), state.position.z);
+  camera.position.set(state.position.x, state.position.y + Math.sin(elapsed * 1.35) * 0.07, state.position.z);
   camera.rotation.set(state.pitch, state.yaw, 0);
+  backdrop.position.set(state.position.x, 0, state.position.z);
   ocean.position.x = Math.floor(state.position.x / 32) * 32;
   ocean.position.z = Math.floor(state.position.z / 32) * 32;
   sky.material.uniforms.uTime.value = elapsed;
@@ -1073,13 +1094,13 @@ function render() {
   ocean.material.uniforms.uTime.value = elapsed;
   planet.material.uniforms.uTime.value = elapsed;
   for (const chunk of chunks.values()) {
-    if (chunk.userData.filaments && (chunk.userData.filamentAge ?? 0) < 1.2) {
+    if (!state.paused && chunk.userData.filaments && (chunk.userData.filamentAge ?? 0) < 1.2) {
       const nextAge = Math.min(1.2, (chunk.userData.filamentAge ?? 0) + delta);
       chunk.userData.filamentAge = nextAge;
-      chunk.userData.filaments.material.opacity = nextAge / 1.2;
+      chunk.userData.filaments.material.opacity = 0.2 * nextAge / 1.2;
     }
     const artifact = chunk.userData.artifact;
-    if (artifact && !artifact.userData.discovered) {
+    if (!state.paused && artifact && !artifact.userData.discovered) {
       artifact.rotation.y += delta * 0.8;
       artifact.userData.ring.rotation.z += delta * 1.8;
       artifact.userData.ring2.rotation.x += delta * 1.25;

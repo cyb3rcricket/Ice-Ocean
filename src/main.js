@@ -132,6 +132,7 @@ const state = {
 
 const keys = new Set();
 const chunks = new Map();
+const pendingChunkCells = [];
 const colliders = [];
 let renderer;
 let camera;
@@ -454,7 +455,10 @@ function addOcean() {
 function updateChunks(force = false) {
   const cellX = Math.floor(state.position.x / CHUNK_SIZE);
   const cellZ = Math.floor(state.position.z / CHUNK_SIZE);
-  if (!force && state.currentCell && state.currentCell.x === cellX && state.currentCell.z === cellZ) return;
+  if (!force && state.currentCell && state.currentCell.x === cellX && state.currentCell.z === cellZ) {
+    processPendingChunks(1);
+    return;
+  }
   state.currentCell = { x: cellX, z: cellZ };
   const cellMeta = getChunkMetadata(cellX, cellZ);
   if (!force && state.currentBiome !== null && state.currentBiome !== cellMeta.biome) {
@@ -466,17 +470,6 @@ function updateChunks(force = false) {
     regionLabel.textContent = cellMeta.regionName;
   }
   app.dataset.region = cellMeta.regionName;
-  for (let x = cellX - STREAM_RADIUS; x <= cellX + STREAM_RADIUS; x += 1) {
-    for (let z = cellZ - STREAM_RADIUS; z <= cellZ + STREAM_RADIUS; z += 1) {
-      const id = `${x}:${z}`;
-      if (!chunks.has(id)) {
-        const chunk = createChunk(x, z);
-        chunks.set(id, chunk);
-        colliders.push(...chunk.userData.colliders);
-        world.add(chunk);
-      }
-    }
-  }
   for (const [id, chunk] of chunks) {
     const [x, z] = id.split(':').map(Number);
     if (Math.abs(x - cellX) > STREAM_RADIUS || Math.abs(z - cellZ) > STREAM_RADIUS) {
@@ -489,6 +482,45 @@ function updateChunks(force = false) {
       chunks.delete(id);
     }
   }
+  const missing = [];
+  for (let x = cellX - STREAM_RADIUS; x <= cellX + STREAM_RADIUS; x += 1) {
+    for (let z = cellZ - STREAM_RADIUS; z <= cellZ + STREAM_RADIUS; z += 1) {
+      if (!chunks.has(`${x}:${z}`)) missing.push({ x, z });
+    }
+  }
+  missing.sort((a, b) => (Math.abs(a.x - cellX) + Math.abs(a.z - cellZ)) - (Math.abs(b.x - cellX) + Math.abs(b.z - cellZ)));
+  if (force) {
+    pendingChunkCells.length = 0;
+    for (const cell of missing) addChunk(cell.x, cell.z);
+  } else {
+    pendingChunkCells.length = 0;
+    pendingChunkCells.push(...missing);
+    processPendingChunks(1);
+  }
+  updateChunkReadout();
+}
+
+function addChunk(x, z) {
+  const chunk = createChunk(x, z);
+  chunks.set(`${x}:${z}`, chunk);
+  colliders.push(...chunk.userData.colliders);
+  world.add(chunk);
+}
+
+function processPendingChunks(limit) {
+  let created = 0;
+  while (pendingChunkCells.length > 0 && created < limit) {
+    const cell = pendingChunkCells.shift();
+    if (!state.currentCell) break;
+    if (Math.abs(cell.x - state.currentCell.x) > STREAM_RADIUS || Math.abs(cell.z - state.currentCell.z) > STREAM_RADIUS) continue;
+    if (chunks.has(`${cell.x}:${cell.z}`)) continue;
+    addChunk(cell.x, cell.z);
+    created += 1;
+  }
+  if (created > 0) updateChunkReadout();
+}
+
+function updateChunkReadout() {
   chunksReadout.innerHTML = `${chunks.size} <small>ACTIVE</small>`;
   app.dataset.chunks = String(chunks.size);
 }
@@ -642,17 +674,11 @@ function createChunk(cx, cz) {
     spire.position.set(spec.x, SEA_LEVEL - 0.05, spec.z);
     group.add(spire);
     spires.push(spire);
-    let radius = 0;
-    let height = 0;
-    spire.traverse((part) => {
-      if (!part.isMesh) return;
-      const vertices = part.geometry.getAttribute('position');
-      for (let vertex = 0; vertex < vertices.count; vertex += 1) {
-        radius = Math.max(radius, Math.hypot(vertices.getX(vertex), vertices.getZ(vertex)));
-        height = Math.max(height, vertices.getY(vertex));
-      }
+    const profile = buildColliderProfile(spire);
+    group.userData.colliders.push({
+      x: spec.x, z: spec.z, r: profile.maxRadius, h: spire.position.y + profile.maxHeight,
+      baseY: spire.position.y, bands: profile.bands, bandHeight: profile.bandHeight,
     });
-    group.userData.colliders.push({ x: spec.x, z: spec.z, r: radius, h: spire.position.y + height });
   }
 
   const filaments = buildChunkFilaments(spires, meta.biome);
@@ -824,7 +850,8 @@ function bindControls() {
   window.addEventListener('resize', onResize);
   window.addEventListener('blur', () => keys.clear());
   window.addEventListener('keydown', (event) => {
-    if (['INPUT', 'TEXTAREA', 'BUTTON'].includes(document.activeElement?.tagName)) return;
+    const activeElement = document.activeElement;
+    if (activeElement && (['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement.tagName) || activeElement.isContentEditable)) return;
     if (event.code === 'Space') { event.preventDefault(); togglePause(); return; }
     if (event.code === 'KeyR') { restartVoyage(); return; }
     keys.add(event.code);
@@ -1004,13 +1031,54 @@ function movePlayer(delta) {
   state.distance += Math.hypot(state.position.x - before.x, state.position.z - before.z) * 0.018;
 }
 
+const COLLIDER_BANDS = 8;
+
+function buildColliderProfile(spire) {
+  let maxHeight = 0;
+  const samples = [];
+  spire.traverse((part) => {
+    if (!part.isMesh) return;
+    const vertices = part.geometry.getAttribute('position');
+    for (let vertex = 0; vertex < vertices.count; vertex += 1) {
+      const y = vertices.getY(vertex);
+      const r = Math.hypot(vertices.getX(vertex), vertices.getZ(vertex));
+      samples.push([y, r]);
+      if (y > maxHeight) maxHeight = y;
+    }
+  });
+  const bandHeight = maxHeight > 0 ? maxHeight / COLLIDER_BANDS : 1;
+  const bands = new Array(COLLIDER_BANDS).fill(0);
+  for (const [y, r] of samples) {
+    const index = Math.min(COLLIDER_BANDS - 1, Math.max(0, Math.floor(y / bandHeight)));
+    if (r > bands[index]) bands[index] = r;
+  }
+  for (let i = 0; i < COLLIDER_BANDS; i += 1) {
+    if (bands[i] > 0) continue;
+    let fill = 0;
+    for (let j = i - 1; j >= 0; j -= 1) { if (bands[j] > 0) { fill = bands[j]; break; } }
+    for (let j = i + 1; j < COLLIDER_BANDS; j += 1) { if (bands[j] > 0) { fill = Math.max(fill, bands[j]); break; } }
+    bands[i] = fill;
+  }
+  return { maxHeight, maxRadius: Math.max(...bands, 0), bands, bandHeight };
+}
+
+function colliderRadiusAt(collider, altitude) {
+  if (!Array.isArray(collider.bands) || collider.bands.length === 0) return collider.r;
+  const localY = altitude - (collider.baseY ?? 0);
+  const index = Math.min(collider.bands.length - 1, Math.max(0, Math.floor(localY / collider.bandHeight)));
+  let radius = collider.bands[index];
+  if (index > 0) radius = Math.max(radius, collider.bands[index - 1]);
+  if (index < collider.bands.length - 1) radius = Math.max(radius, collider.bands[index + 1]);
+  return radius;
+}
+
 function isBlocked(x, z, altitude = state.position.y) {
   const playerBottom = altitude - PLAYER_RADIUS;
   const playerTop = altitude + PLAYER_RADIUS;
   for (const collider of colliders) {
     const dx = x - collider.x;
     const dz = z - collider.z;
-    const horizontalHit = dx * dx + dz * dz < (collider.r + PLAYER_RADIUS) ** 2;
+    const horizontalHit = dx * dx + dz * dz < (colliderRadiusAt(collider, altitude) + PLAYER_RADIUS) ** 2;
     const verticalHit = playerBottom < collider.h && playerTop > SEA_LEVEL + 0.15;
     if (horizontalHit && verticalHit) return true;
   }
